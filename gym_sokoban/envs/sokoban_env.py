@@ -17,7 +17,7 @@ class SokobanEnv(gym.Env):
                  max_steps=120,
                  num_boxes=4,
                  num_gen_steps=None,
-                 reset=True):
+                 reset=False):
 
         # General Configuration
         self.dim_room = dim_room
@@ -42,7 +42,9 @@ class SokobanEnv(gym.Env):
         self.action_space = Discrete(len(ACTION_LOOKUP))
         screen_height, screen_width = (dim_room[0] * 16, dim_room[1] * 16)
         self.observation_space = Box(low=0, high=255, shape=(screen_height, screen_width, 3), dtype=np.uint8)
-        
+        # self.observation_space = Box(low=0, high=5, shape=(dim_room[0], dim_room[1]), dtype=np.uint8)
+        self.mask = np.arange(dim_room[0] * dim_room[1]).reshape(dim_room)
+
         if reset:
             # Initialize Room
             _ = self.reset()
@@ -52,8 +54,8 @@ class SokobanEnv(gym.Env):
         return [seed]
 
     def step(self, action, observation_mode='rgb_array'):
-        assert action in ACTION_LOOKUP
-        assert observation_mode in ['rgb_array', 'tiny_rgb_array', 'raw']
+        # assert action in ACTION_LOOKUP
+        # assert observation_mode in ['rgb_array', 'tiny_rgb_array', 'raw']
 
         self.num_env_steps += 1
 
@@ -62,15 +64,16 @@ class SokobanEnv(gym.Env):
 
         moved_box = False
 
-        if action == 0:
-            moved_player = False
+        moved_player, moved_box = self._push(action)
+        # if action == 0:
+        #     moved_player = False
 
-        # All push actions are in the range of [0, 3]
-        elif action < 5:
-            moved_player, moved_box = self._push(action)
+        # # All push actions are in the range of [0, 3]
+        # elif action < 5:
+        #     moved_player, moved_box = self._push(action)
 
-        else:
-            moved_player = self._move(action)
+        # else:
+        #     moved_player = self._move(action)
 
         self._calc_reward()
         
@@ -97,7 +100,7 @@ class SokobanEnv(gym.Env):
         :param action:
         :return: Boolean, indicating a change of the room's state
         """
-        change = CHANGE_COORDINATES[(action - 1) % 4]
+        change = CHANGE_COORDINATES[action]
         new_position = self.player_position + change
         current_position = self.player_position.copy()
 
@@ -138,7 +141,7 @@ class SokobanEnv(gym.Env):
         :param action:
         :return: Boolean, indicating a change of the room's state
         """
-        change = CHANGE_COORDINATES[(action - 1) % 4]
+        change = CHANGE_COORDINATES[action]
         new_position = self.player_position + change
         current_position = self.player_position.copy()
 
@@ -198,20 +201,45 @@ class SokobanEnv(gym.Env):
     def _check_if_maxsteps(self):
         return (self.max_steps == self.num_env_steps)
 
-    def reset(self, second_player=False, render_mode='rgb_array'):
-        try:
-            self.room_fixed, self.room_state, self.box_mapping = generate_room(
-                dim=self.dim_room,
-                num_steps=self.num_gen_steps,
-                num_boxes=self.num_boxes,
-                second_player=second_player
-            )
-        except (RuntimeError, RuntimeWarning) as e:
-            print("[SOKOBAN] Runtime Error/Warning: {}".format(e))
-            print("[SOKOBAN] Retry . . .")
-            return self.reset(second_player=second_player, render_mode=render_mode)
+    def reset(self, second_player=False, render_mode='rgb_array', generate=True):
+        if generate:
+            try:
+                self.room_fixed, self.room_state, self.box_mapping = generate_room(
+                    dim=self.dim_room,
+                    num_steps=self.num_gen_steps,
+                    num_boxes=self.num_boxes,
+                    second_player=second_player
+                )
+            except (RuntimeError, RuntimeWarning) as e:
+                print("[SOKOBAN] Runtime Error/Warning: {}".format(e))
+                print("[SOKOBAN] Retry . . .")
+                return self.reset(second_player=second_player, render_mode=render_mode)
+            self.player_position = np.argwhere(self.room_state == 5)[0]
+        else:
+            self.room_fixed = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                                        [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+                                        [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
+                                        [0, 1, 2, 2, 1, 1, 0, 0, 0, 0],
+                                        [0, 1, 1, 2, 1, 1, 0, 0, 0, 0],
+                                        [0, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+                                        [0, 1, 0, 1, 1, 1, 1, 0, 0, 0],
+                                        [0, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+                                        [0, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+                                        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
 
-        self.player_position = np.argwhere(self.room_state == 5)[0]
+            self.room_state = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                                        [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+                                        [0, 0, 0, 1, 1, 0, 0, 0, 0, 0],
+                                        [0, 1, 2, 2, 1, 1, 0, 0, 0, 0],
+                                        [0, 1, 1, 2, 1, 1, 0, 0, 0, 0],
+                                        [0, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+                                        [0, 1, 0, 1, 1, 1, 1, 0, 0, 0],
+                                        [0, 5, 4, 1, 4, 4, 1, 0, 0, 0],
+                                        [0, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+                                        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+            self.box_mapping = {(3, 2): (7, 4), (3, 3): (7, 5), (4, 3): (7, 2)}
+            self.player_position = np.array([7, 1])
+
         self.num_env_steps = 0
         self.reward_last = 0
         self.boxes_on_target = 0
@@ -235,12 +263,19 @@ class SokobanEnv(gym.Env):
             return self.viewer.isopen
 
         elif 'raw' in mode:
-            arr_walls = (self.room_fixed == 0).view(np.int8)
-            arr_goals = (self.room_fixed == 2).view(np.int8)
-            arr_boxes = ((self.room_state == 4) + (self.room_state == 3)).view(np.int8)
-            arr_player = (self.room_state == 5).view(np.int8)
+            player = self.mask[self.room_state == 5]
+            # boxes = sorted(self.mask[(self.room_state == 4) + (self.room_state == 3)])
+            # return player[0], *boxes
 
-            return arr_walls, arr_goals, arr_boxes, arr_player
+            boxes = frozenset(self.mask[(self.room_state == 4) + (self.room_state == 3)])
+            return player[0], boxes
+
+            # arr_walls = (self.room_fixed == 0).view(np.int8)
+            # arr_goals = (self.room_fixed == 2).view(np.int8)
+            # arr_boxes = ((self.room_state == 4) + (self.room_state == 3)).view(np.int8)
+            # arr_player = (self.room_state == 5).view(np.int8)
+
+            # return arr_walls, arr_goals, arr_boxes, arr_player
 
         else:
             super(SokobanEnv, self).render(mode=mode)  # just raise an exception
@@ -267,18 +302,24 @@ class SokobanEnv(gym.Env):
     def get_action_meanings(self):
         return ACTION_LOOKUP
 
-
 ACTION_LOOKUP = {
-    0: 'no operation',
-    1: 'push up',
-    2: 'push down',
-    3: 'push left',
-    4: 'push right',
-    5: 'move up',
-    6: 'move down',
-    7: 'move left',
-    8: 'move right',
+    0: 'push up',
+    1: 'push down',
+    2: 'push left',
+    3: 'push right',
 }
+
+# ACTION_LOOKUP = {
+#     0: 'no operation',
+#     1: 'push up',
+#     2: 'push down',
+#     3: 'push left',
+#     4: 'push right',
+#     5: 'move up',
+#     6: 'move down',
+#     7: 'move left',
+#     8: 'move right',
+# }
 
 # Moves are mapped to coordinate changes as follows
 # 0: Move up
